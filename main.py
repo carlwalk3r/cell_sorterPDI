@@ -1,3 +1,11 @@
+
+#GRUPO : 6
+# Integrantes:
+# - CARLOS G AMARILLA VERDUN    CI: 4.945.001
+# - ADRIAN ENRIQUE PEREZ GAONA  CI: 4.626.716
+# - TOBIAS DANIEL OTAZO WIEGERT CI: 4.959.701
+
+
 import cv2                       # OpenCV para procesamiento de imágenes
 import numpy as np               # NumPy para operaciones con matrices
 from skimage.util import invert  # Función para invertir imágenes (complemento)
