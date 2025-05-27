@@ -81,22 +81,77 @@ cv2.imwrite('imagen_D.png', mask_D.astype(np.uint8))
 
 
 # -----------------------------
-# ITEM 5: Generar Imagen E (citoplasmas cerrados)
+# ITEM 5: Generar Imagen E – aislar SOLO los NÚCLEOS de Tipo 4
 # -----------------------------
-B_bin = (img_B // 255).astype(np.uint8)  
+
+# Paso 5.1: Convertir img_B a binaria 0/1
+# img_B: 0 = membrana+célula, 255 = fondo+citoplasma
+# B_bin = 1 donde hay blanco (fondo+citoplasma), 0 donde está la membrana
+B_bin = (img_B // 255).astype(np.uint8)
+
+# Paso 5.2: Crear semilla (marker) del fondo exterior
+# Marcamos con 1 todos los píxeles de B_bin que tocan cualquiera de los 4 bordes
 marker_bg = np.zeros_like(B_bin)
-marker_bg[0, :] = B_bin[0, :]
-marker_bg[-1, :] = B_bin[-1, :]
-marker_bg[:, 0] = B_bin[:, 0]
-marker_bg[:, -1] = B_bin[:, -1]
+marker_bg[0, :]   = B_bin[0, :]   # fila superior
+marker_bg[-1, :]  = B_bin[-1, :]  # fila inferior
+marker_bg[:, 0]   = B_bin[:, 0]   # columna izquierda
+marker_bg[:, -1]  = B_bin[:, -1]  # columna derecha
 
+# Paso 5.3: Reconstrucción morfológica del fondo
+# Reconstruimos a partir del marker_bg, pero sin salirnos de las regiones permitidas por B_bin
 fondo_recon_B = reconstruccion_morfologica(marker_bg, B_bin, B)
-citoplasmas_cerrados = B_bin & invert(fondo_recon_B)  
 
-img_E = (citoplasmas_cerrados * 255).astype(np.uint8)  # Blanco = citoplasmas cerrados
+# Paso 5.4: Detectar citoplasmas completamente cerrados
+# citoplasmas_cerrados = 1 en huecos de B_bin que NO fueron alcanzados por la reconstrucción del fondo
+citoplasmas_cerrados = B_bin & invert(fondo_recon_B)
+
+# Paso 5.5: Generar img_E (invertir para que núcleos queden en negro)
+# Primero pasamos citoplasmas_cerrados de 1→255, 0→0
+img_E = (citoplasmas_cerrados * 255).astype(np.uint8)
+# Luego invertimos: 255→0 (los núcleos), 0→255 (el resto)
 img_E = cv2.bitwise_not(img_E)
+
+# Paso 5.6: Guardar Imagen E
+# La salida contiene en NEGRO únicamente los píxeles correspondientes a los núcleos de Tipo 4
 cv2.imwrite('imagen_E.png', img_E)
 
+
+# -----------------------------
+# ITEM 6: Generar Imagen F (células de Tipo 4 completas)
+# -----------------------------
+
+# Paso 6.1: Definir función de reconstrucción morfológica mejorada
+def reconstruccion_morfologica(marker, mask, kernel):
+    prev = np.zeros_like(marker)
+    curr = marker.copy()
+    
+    while not np.array_equal(curr, prev):
+        prev = curr.copy()
+        dilated = cv2.dilate(curr, kernel, iterations=1)
+        curr = np.minimum(dilated, mask)
+    
+    return curr
+
+# Paso 6.2: Preparar los núcleos como semillas (marker)
+# La imagen E tiene los núcleos en NEGRO (0), resto en blanco (255)
+E_nucleos = cv2.bitwise_not(img_E) // 255  # Invertimos para que núcleos sean 1
+E_nucleos = E_nucleos.astype(np.uint8)
+
+# Paso 6.3: Preparar la máscara de células (de imagen A)
+# Necesitamos todas las células como 1 y el fondo como 0
+A_celulas = (255 - mask_A) // 255
+A_celulas = A_celulas.astype(np.uint8)
+
+# Paso 6.4: Dilatar ligeramente los núcleos (mejor punto de partida)
+kernel_dil = np.ones((5,5), np.uint8)  # Kernel más grande para mejor propagación
+nucleos_dil = cv2.dilate(E_nucleos, kernel_dil, iterations=2)
+
+# Paso 6.5: Realizar la reconstrucción morfológica
+celulas_tipo4 = reconstruccion_morfologica(nucleos_dil, A_celulas, B)
+
+# Paso 6.6: Guardar resultado final (con colores invertidos)
+img_F = ((1 - celulas_tipo4) * 255).astype(np.uint8)
+cv2.imwrite('imagen_F.png', img_F)
 
 # -----------------------------
 # Mostrar resultados
@@ -106,6 +161,8 @@ cv2.imshow('A Celulas completas', mask_A.astype(np.uint8))
 cv2.imshow('B Citoplasmas (huecos)', img_B)
 cv2.imshow('C Celulas agujereadas', img_C.astype(np.uint8))
 cv2.imshow('D Celulas sin agujeros (Tipo 1)', mask_D.astype(np.uint8))
-cv2.imshow('E Citoplasmas cerrados (Tipo 2 y 4)', img_E)
+cv2.imshow('E Nucleos de celulas (Tipo4)', img_E)
+cv2.imshow('F Celulas de Tipo 4 completas', img_F)
+
 cv2.waitKey(0)
 cv2.destroyAllWindows()
